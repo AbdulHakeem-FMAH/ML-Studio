@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+.eggs/
+dist/
+build/
+*.so
+
+# Environment
+.env
+*.env.local
+
+# AutoGluon scratch
+/tmp/autogluon_models/
+ag_tmp_*/
+
+# Node
+node_modules/
+frontend/dist/
+frontend/.vercel/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+*.log
+
+# Alembic
+alembic/versions/*.pyc

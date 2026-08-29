@@ -1,0 +1,60 @@
+# ── Core Framework ────────────────────────────────────────────────────────────
+fastapi==0.141.1
+uvicorn[standard]==0.52.4
+python-multipart==0.0.20
+
+# ── Database ──────────────────────────────────────────────────────────────────
+sqlalchemy==2.0.52
+alembic==1.19.1
+asyncpg==0.30.0
+psycopg2-binary==2.9.10
+PyMySQL==1.1.1
+greenlet==3.2.3
+
+# ── Validation & Settings ─────────────────────────────────────────────────────
+pydantic==2.13.4
+pydantic-settings==2.10.1
+
+# ── Auth & Security ───────────────────────────────────────────────────────────
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+bcrypt==4.3.0
+
+# ── AutoML — AutoGluon 1.6.1 (full suite) ────────────────────────────────────
+# NOTE: autogluon pulls in its own numpy/pandas/scikit-learn — let it resolve
+autogluon==1.6.1
+
+# ── EDA ───────────────────────────────────────────────────────────────────────
+ydata-profiling==4.18.4
+
+# ── Drift Detection ───────────────────────────────────────────────────────────
+# evidently 0.7.x has a completely rewritten API vs 0.4.x
+evidently==0.7.21
+
+# ── Time-Series (supplemental — AutoGluon handles primary forecasting) ────────
+statsmodels==0.14.4
+prophet==1.1.6
+
+# ── File formats ──────────────────────────────────────────────────────────────
+openpyxl==3.1.5
+pyarrow
+
+# ── Object Storage ────────────────────────────────────────────────────────────
+minio==7.2.20
+
+# ── Background tasks ──────────────────────────────────────────────────────────
+celery==5.6.3
+redis==8.1.0
+flower==2.0.1
+
+# ── Logging ───────────────────────────────────────────────────────────────────
+loguru==0.7.3
+
+# ── HTTP client ───────────────────────────────────────────────────────────────
+httpx==0.28.1
+requests==2.32.3
+
+# ── Utilities ─────────────────────────────────────────────────────────────────
+python-slugify==8.0.4
+python-dateutil==2.9.0.post0
+aiofiles==24.1.0
