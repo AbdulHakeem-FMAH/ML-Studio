@@ -15,8 +15,8 @@ def _check_postgres() -> dict:
     t0 = time.perf_counter()
     try:
         import psycopg2
-        # Strip the asyncpg driver prefix for psycopg2
-        dsn = _cfg.DATABASE_URL_SYNC.replace("postgresql+psycopg2://", "")
+        # Use standard postgresql:// URI for psycopg2
+        dsn = _cfg.DATABASE_URL_SYNC.replace("postgresql+psycopg2://", "postgresql://").replace("postgresql+asyncpg://", "postgresql://")
         conn = psycopg2.connect(dsn, connect_timeout=3)
         conn.close()
         ms = round((time.perf_counter() - t0) * 1000, 1)

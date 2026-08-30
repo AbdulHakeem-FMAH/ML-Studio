@@ -49,21 +49,32 @@ async def run_forecast(body: ForecastRequest, db: AsyncSession = Depends(get_db)
     else:
         df = pd.read_csv(buf)
 
-    # Auto-detect date/value columns if not specified
-    date_col  = body.date_col
+    # Automatically use the target column configured during training
     value_col = body.value_col or model.target_col
+    num_cols  = df.select_dtypes(include="number").columns.tolist()
 
+    if not value_col or value_col not in df.columns:
+        value_col = num_cols[0] if num_cols else df.columns[-1]
+    elif value_col not in num_cols:
+        converted = pd.to_numeric(df[value_col], errors="coerce")
+        if converted.notna().sum() < 3 and num_cols:
+            value_col = num_cols[0]
+
+    # Automatically identify date/time column
+    date_col = body.date_col
+    if not date_col:
+        if ds.schema_def:
+            for item in ds.schema_def:
+                if item.get("semantic_type") == "datetime" and item.get("col") in df.columns and item.get("col") != value_col:
+                    date_col = item.get("col")
+                    break
     if not date_col:
         for c in df.columns:
-            if any(kw in c.lower() for kw in ("date", "time", "ts", "timestamp", "dt")):
+            if any(kw in c.lower() for kw in ("date", "time", "ts", "timestamp", "dt", "day", "month", "year")) and c != value_col:
                 date_col = c
                 break
     if not date_col:
         date_col = df.columns[0]
-
-    if not value_col or value_col not in df.columns:
-        num_cols  = df.select_dtypes(include="number").columns.tolist()
-        value_col = num_cols[0] if num_cols else df.columns[-1]
 
     try:
         result_data = forecast_from_df(df, date_col, value_col, body.horizon)
@@ -72,6 +83,8 @@ async def run_forecast(body: ForecastRequest, db: AsyncSession = Depends(get_db)
 
     return ForecastResponse(
         model_name = body.model_name,
+        target_col = value_col,
+        date_col   = date_col,
         history    = result_data["history"],
         forecast   = result_data["forecast"],
     )

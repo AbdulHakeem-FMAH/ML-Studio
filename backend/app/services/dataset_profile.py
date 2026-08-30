@@ -26,24 +26,32 @@ def detect_dataset_type(df: pd.DataFrame) -> str:
     string_cols = df.select_dtypes(include=["object", "string"]).columns.tolist()
     text_like = 0
     datetime_like = 0
+    date_col_candidates = []
     for col in string_cols:
         values = df[col].dropna().astype(str)
         if values.empty:
             continue
+        is_date_named = any(kw in col.lower() for kw in ("date", "time", "ts", "timestamp", "datetime", "day", "month", "year"))
         parsed = pd.to_datetime(values, errors="coerce", utc=False, format="mixed")
-        if parsed.notna().mean() >= 0.9:
+        valid_ratio = float(parsed.notna().mean()) if len(parsed) else 0.0
+        if valid_ratio >= 0.7 or (is_date_named and valid_ratio >= 0.4):
             datetime_like += 1
+            date_col_candidates.append(col)
             continue
         if values.str.len().median() >= 40 and values.nunique() / max(len(values), 1) >= 0.25:
             text_like += 1
 
     numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
-    # A date alone is not enough: wide event/transaction data such as HousePrice
-    # remains tabular. A compact date/value shape or repeating entity series is a
-    # stronger indication of forecasting data.
-    has_native_datetime = len(df.select_dtypes(include=["datetime", "datetimetz"]).columns) > 0
-    if (datetime_like or has_native_datetime) and numeric_cols and len(numeric_cols) <= 4:
-        return "timeseries"
+    native_date_cols = df.select_dtypes(include=["datetime", "datetimetz"]).columns.tolist()
+    has_native_datetime = len(native_date_cols) > 0
+
+    if (datetime_like > 0 or has_native_datetime) and numeric_cols:
+        date_col = date_col_candidates[0] if date_col_candidates else native_date_cols[0]
+        # Calculate date uniqueness ratio (time series datasets have high date uniqueness or sequential steps)
+        uniqueness = df[date_col].nunique() / max(len(df), 1)
+        if uniqueness >= 0.03 or len(df) <= 500:
+            return "timeseries"
+
     if text_like and text_like >= max(1, len(string_cols)) and not numeric_cols:
         return "text"
     return "tabular"
@@ -73,7 +81,18 @@ def column_profile(series: pd.Series) -> dict[str, Any]:
         kind = "datetime"
     else:
         strings = non_null.astype(str) if not non_null.empty else non_null
-        kind = "text" if not strings.empty and strings.str.len().median() >= 40 else "category"
+        is_date_named = any(kw in str(series.name).lower() for kw in ("date", "time", "ts", "timestamp", "datetime", "day", "month", "year"))
+        if not strings.empty:
+            parsed = pd.to_datetime(strings, errors="coerce", utc=False, format="mixed")
+            valid_ratio = float(parsed.notna().mean())
+            if valid_ratio >= 0.7 or (is_date_named and valid_ratio >= 0.4):
+                kind = "datetime"
+            elif strings.str.len().median() >= 40:
+                kind = "text"
+            else:
+                kind = "category"
+        else:
+            kind = "category"
 
     sample_values = [_json_value(v) for v in non_null.head(3).tolist()]
     result: dict[str, Any] = {

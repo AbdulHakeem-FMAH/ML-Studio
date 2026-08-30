@@ -41,6 +41,7 @@ async def get_dataset(dataset_id: str, db: AsyncSession = Depends(get_db)):
 async def upload_dataset(
     name:   str        = Form(...),
     owner:  str        = Form("admin"),
+    dtype:  str | None = Form(None),
     file:   UploadFile = File(...),
     db:     AsyncSession = Depends(get_db),
 ):
@@ -59,7 +60,7 @@ async def upload_dataset(
         raise HTTPException(status_code=422, detail=f"Cannot parse file: {exc}")
 
     schema_def, quality = profile_dataframe(df)
-    dtype = detect_dataset_type(df)
+    inferred_dtype = dtype if dtype and dtype != "auto" else detect_dataset_type(df)
 
     # Upload raw bytes to MinIO
     ds_id      = str(uuid.uuid4())
@@ -69,7 +70,7 @@ async def upload_dataset(
     ds = Dataset(
         id          = ds_id,
         name        = name,
-        dtype       = dtype,
+        dtype       = inferred_dtype,
         fmt         = fmt,
         source      = "file",
         owner       = owner,

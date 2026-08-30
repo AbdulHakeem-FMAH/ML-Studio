@@ -105,7 +105,22 @@ export const eda = {
 export const drift = {
   list:    ()          => api.get("/drift").then(r => r.data),
   forModel: (modelId)  => api.get(`/drift/${modelId}`).then(r => r.data),
-  check:   (params)    => api.post("/drift/check", null, { params }).then(r => r.data),
+  check:   (data)      => {
+    if (data instanceof FormData) {
+      return api.post("/drift/check", data, {
+        headers: { "Content-Type": "multipart/form-data" },
+      }).then(r => r.data);
+    }
+    const fd = new FormData();
+    Object.entries(data).forEach(([k, v]) => {
+      if (v != null) fd.append(k, v);
+    });
+    return api.post("/drift/check", fd, {
+      headers: { "Content-Type": "multipart/form-data" },
+    }).then(r => r.data);
+  },
+  retrain: (payload)   => api.post("/drift/retrain", payload).then(r => r.data),
+  delete:  (reportId)  => api.delete(`/drift/${reportId}`),
   reportUrl: (reportId) => `${BASE}/drift/report/${reportId}/html`,
 };
 

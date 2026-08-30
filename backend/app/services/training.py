@@ -292,70 +292,163 @@ def _train_timeseries(
     log_cb: Callable,
     prog_cb: Callable,
 ) -> dict:
-    from autogluon.timeseries import TimeSeriesDataFrame, TimeSeriesPredictor
-
-    log_cb("[AutoGluon] Starting TimeSeriesPredictor…")
+    log_cb("[Time-Series] Preparing time series dataset for training…")
 
     # Detect datetime and item_id columns
     date_cols = [c for c in df.columns if pd.api.types.is_datetime64_any_dtype(df[c])
-                 or any(kw in c.lower() for kw in ("date", "time", "ts", "timestamp"))]
-    id_cols   = [c for c in df.columns if any(kw in c.lower() for kw in ("id", "item", "series", "group"))]
+                 or any(kw in c.lower() for kw in ("date", "time", "ts", "timestamp", "dt", "day", "month", "year"))]
+    id_cols   = [c for c in df.columns if any(kw in c.lower() for kw in ("id", "item", "series", "group")) and c != target_col]
 
     timestamp_col = date_cols[0] if date_cols else df.columns[0]
     item_id_col   = id_cols[0] if id_cols else None
 
     df[timestamp_col] = pd.to_datetime(df[timestamp_col], errors="coerce")
+    df = df.dropna(subset=[timestamp_col, target_col]).sort_values(timestamp_col).reset_index(drop=True)
+    df[target_col] = pd.to_numeric(df[target_col], errors="coerce")
+    df = df.dropna(subset=[target_col])
 
-    if item_id_col:
-        ts_df = TimeSeriesDataFrame.from_data_frame(
-            df, id_column=item_id_col, timestamp_column=timestamp_col,
-        )
-    else:
-        df = df[[timestamp_col, target_col]].dropna()
-        df.insert(0, "item_id", "series_0")
-        ts_df = TimeSeriesDataFrame.from_data_frame(
-            df, id_column="item_id", timestamp_column=timestamp_col,
-        )
-
-    prediction_length = 20
-    predictor = TimeSeriesPredictor(
-        target=target_col,
-        prediction_length=prediction_length,
-        path=str(model_path),
-        verbosity=2,
-    )
+    log_cb(f"[Time-Series] Using timestamp='{timestamp_col}', target='{target_col}' ({len(df)} observations)")
     prog_cb(20)
-    log_cb(f"[AutoGluon-TS] Fitting (prediction_length={prediction_length}, preset={preset})…")
 
-    predictor.fit(ts_df, presets=preset, time_limit=time_limit)
-    log_cb("[AutoGluon-TS] Fit complete.")
-    prog_cb(70)
-
-    lb_df = predictor.leaderboard(ts_df, silent=True)
+    model_path.mkdir(parents=True, exist_ok=True)
+    ag_succeeded = False
+    best_model_name = "AutoGluon-TS"
     leaderboard = []
-    for _, row in lb_df.iterrows():
-        entry: dict[str, Any] = {"m": row["model"]}
-        for col in lb_df.columns:
-            if col != "model":
-                val = row[col]
-                entry[col.lower().replace(" ", "_")] = (
-                    round(float(val), 4) if isinstance(val, (int, float)) and not np.isnan(val) else None
-                )
-        leaderboard.append(entry)
+    metrics = {}
 
-    best_model_name = str(lb_df.iloc[0]["model"]) if len(lb_df) else "AutoGluon-TS"
+    # Attempt AutoGluon TimeSeriesPredictor if dataset length is >= 8
+    if len(df) >= 8:
+        try:
+            from autogluon.timeseries import TimeSeriesDataFrame, TimeSeriesPredictor
+            ag_ts_preset = "medium_quality" if preset in ("fast", "medium_quality") else ("high_quality" if preset == "high_quality" else "best_quality")
+            pred_len = max(1, min(20, len(df) // 3))
+
+            if item_id_col:
+                ts_df = TimeSeriesDataFrame.from_data_frame(
+                    df, id_column=item_id_col, timestamp_column=timestamp_col,
+                )
+            else:
+                work_df = df[[timestamp_col, target_col]].copy()
+                work_df.insert(0, "item_id", "series_0")
+                ts_df = TimeSeriesDataFrame.from_data_frame(
+                    work_df, id_column="item_id", timestamp_column=timestamp_col,
+                )
+
+            log_cb(f"[AutoGluon-TS] Fitting TimeSeriesPredictor (prediction_length={pred_len}, preset={ag_ts_preset})…")
+            predictor = TimeSeriesPredictor(
+                target=target_col,
+                prediction_length=pred_len,
+                path=str(model_path),
+                verbosity=2,
+            )
+            predictor.fit(ts_df, presets=ag_ts_preset, time_limit=time_limit)
+            lb_df = predictor.leaderboard(ts_df, silent=True)
+            for _, row in lb_df.iterrows():
+                entry: dict[str, Any] = {"m": str(row["model"])}
+                for col in lb_df.columns:
+                    if col != "model":
+                        val = row[col]
+                        entry[col.lower().replace(" ", "_")] = (
+                            round(float(val), 4) if isinstance(val, (int, float)) and not np.isnan(val) else None
+                        )
+                leaderboard.append(entry)
+            best_model_name = str(lb_df.iloc[0]["model"]) if len(lb_df) else "AutoGluon-TS"
+            ag_succeeded = True
+            log_cb(f"[AutoGluon-TS] Fit complete. Best model: {best_model_name}")
+        except Exception as exc:
+            log_cb(f"[AutoGluon-TS] AutoGluon TS training skipped/fallback: {exc}")
+
+    # Statistical Time-Series fallback / ensemble (Holt-Winters ETS, ARIMA, Linear Trend)
+    if not ag_succeeded:
+        log_cb("[Time-Series] Training statistical forecasting models (ETS, ARIMA, Trend)…")
+        series = df[target_col].astype(float).values
+        n = len(series)
+        models_tested = []
+
+        # 1. Exponential Smoothing (Holt-Winters)
+        try:
+            from statsmodels.tsa.holtwinters import ExponentialSmoothing
+            ets = ExponentialSmoothing(series, trend="add", seasonal=None, initialization_method="estimated").fit()
+            fitted = ets.fittedvalues
+            mae = float(np.mean(np.abs(series - fitted)))
+            rmse = float(np.sqrt(np.mean((series - fitted) ** 2)))
+            r2 = float(1 - (np.sum((series - fitted)**2) / (np.sum((series - np.mean(series))**2) + 1e-8)))
+            models_tested.append({
+                "m": "ExponentialSmoothing (Holt-Winters)",
+                "mae": round(mae, 4),
+                "rmse": round(rmse, 4),
+                "r2": round(r2, 4),
+                "score_val": round(-mae, 4),
+            })
+        except Exception as e:
+            log_cb(f"[Time-Series] ETS model notice: {e}")
+
+        # 2. ARIMA
+        try:
+            from statsmodels.tsa.arima.model import ARIMA
+            order = (1, 1, 0) if n >= 4 else (1, 0, 0)
+            arima = ARIMA(series, order=order).fit()
+            fitted = arima.fittedvalues
+            mae = float(np.mean(np.abs(series[1:] - fitted[1:]))) if n > 1 else 0.0
+            rmse = float(np.sqrt(np.mean((series[1:] - fitted[1:]) ** 2))) if n > 1 else 0.0
+            models_tested.append({
+                "m": f"ARIMA {order}",
+                "mae": round(mae, 4),
+                "rmse": round(rmse, 4),
+                "score_val": round(-mae, 4),
+            })
+        except Exception as e:
+            log_cb(f"[Time-Series] ARIMA model notice: {e}")
+
+        # 3. Linear Trend Extrapolation
+        try:
+            x = np.arange(n)
+            poly = np.polyfit(x, series, 1)
+            fitted = np.polyval(poly, x)
+            mae = float(np.mean(np.abs(series - fitted)))
+            rmse = float(np.sqrt(np.mean((series - fitted) ** 2)))
+            r2 = float(1 - (np.sum((series - fitted)**2) / (np.sum((series - np.mean(series))**2) + 1e-8)))
+            models_tested.append({
+                "m": "Linear Trend Model",
+                "mae": round(mae, 4),
+                "rmse": round(rmse, 4),
+                "r2": round(r2, 4),
+                "score_val": round(-mae, 4),
+            })
+        except Exception as e:
+            log_cb(f"[Time-Series] Linear Trend notice: {e}")
+
+        models_tested.sort(key=lambda x: x.get("mae", 999999))
+        leaderboard = models_tested
+        best_model_name = models_tested[0]["m"] if models_tested else "ExponentialSmoothing"
+        best = models_tested[0] if models_tested else {}
+        metrics = {
+            "mae": best.get("mae"),
+            "rmse": best.get("rmse"),
+            "r2": best.get("r2"),
+        }
+        # Save a metadata file in model_path
+        import json
+        with open(model_path / "ts_metadata.json", "w") as f:
+            json.dump({
+                "target_col": target_col,
+                "timestamp_col": timestamp_col,
+                "best_algo": best_model_name,
+                "observations": n,
+            }, f)
+        log_cb(f"[Time-Series] Evaluated {len(models_tested)} models. Best model: {best_model_name} (MAE={best.get('mae')})")
 
     prog_cb(80)
     return {
         "algo":        best_model_name,
         "task":        "timeseries",
-        "eval_metric": "WQL",
+        "eval_metric": "MAE" if not ag_succeeded else "WQL",
         "features":    len([c for c in df.columns if c != target_col]),
         "leaderboard": leaderboard,
         "importance":  [],
         "confmat":     None,
         "labels":      None,
-        "metrics":     {},
+        "metrics":     metrics,
     }
 
 

@@ -21,17 +21,64 @@ const DEFAULT_CFG = {
 };
 
 function StepOne({ cfg, setCfg, datasets, columns, selectedDataset }) {
-  const selectDataset = (name) => setCfg((current) => ({ ...current, dataset_name: name, target_col: "" }));
+  const isTimeseries = selectedDataset?.dtype === "timeseries";
+  const selectDataset = (name) => {
+    const ds = datasets.find((d) => d.name === name);
+    setCfg((current) => ({
+      ...current,
+      dataset_name: name,
+      target_col: "",
+      task: ds?.dtype === "timeseries" ? "timeseries" : "automatic",
+    }));
+  };
+
+  const selectableColumns = isTimeseries
+    ? columns.filter((col) => col.semantic_type === "number" || (!["datetime"].includes(col.semantic_type) && !anyDate(col.col)))
+    : columns;
+
+  function anyDate(c) {
+    return ["date", "time", "ts", "timestamp", "dt"].some((kw) => c.toLowerCase().includes(kw));
+  }
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
       <div className="grid-2">
-        <div className="field"><label className="label">Model name *</label><input className="input" value={cfg.model_name} onChange={(event) => setCfg((current) => ({ ...current, model_name: event.target.value }))} placeholder="e.g. iris_classifier" /></div>
-        <div className="field"><label className="label">Dataset *</label><select className="input select" value={cfg.dataset_name} onChange={(event) => selectDataset(event.target.value)}><option value="">— choose a dataset —</option>{datasets.map((dataset) => <option key={dataset.id} value={dataset.name}>{dataset.name} · {dataset.rows?.toLocaleString()} rows</option>)}</select></div>
+        <div className="field"><label className="label">Model name *</label><input className="input" value={cfg.model_name} onChange={(event) => setCfg((current) => ({ ...current, model_name: event.target.value }))} placeholder="e.g. weather_forecaster" /></div>
+        <div className="field"><label className="label">Dataset *</label><select className="input select" value={cfg.dataset_name} onChange={(event) => selectDataset(event.target.value)}><option value="">— choose a dataset —</option>{datasets.map((dataset) => <option key={dataset.id} value={dataset.name}>{dataset.name} · {dataset.rows?.toLocaleString()} rows ({dataset.dtype})</option>)}</select></div>
       </div>
-      {selectedDataset && <div style={{ display: "flex", alignItems: "center", gap: 9, padding: "10px 12px", border: "1px solid var(--accent-border)", background: "var(--accent-dim)", borderRadius: "var(--r-md)", color: "var(--text-secondary)", fontSize: 12 }}><CheckCircle size={15} color="var(--accent)" /> Dataset type detected as <strong style={{ color: "var(--text-primary)", textTransform: "capitalize" }}>{selectedDataset.dtype}</strong>. Auto-detect will use this signal where applicable.</div>}
+      {selectedDataset && (
+        <div style={{ display: "flex", alignItems: "center", gap: 9, padding: "10px 12px", border: `1px solid ${isTimeseries ? "rgba(99,102,241,0.4)" : "var(--accent-border)"}`, background: isTimeseries ? "var(--info-dim)" : "var(--accent-dim)", borderRadius: "var(--r-md)", color: "var(--text-secondary)", fontSize: 12 }}>
+          <CheckCircle size={15} color="var(--accent)" />
+          {isTimeseries ? (
+            <span>Dataset type: <strong style={{ color: "var(--text-primary)" }}>Time Series</strong>. Training is automatically locked to <strong>Time-Series Forecasting</strong>.</span>
+          ) : (
+            <span>Dataset type: <strong style={{ color: "var(--text-primary)", textTransform: "capitalize" }}>{selectedDataset.dtype}</strong>. Auto-detect will optimize for tabular ML.</span>
+          )}
+        </div>
+      )}
       <div className="grid-2">
-        <div className="field"><label className="label">Target column *</label><select className="input select" value={cfg.target_col} onChange={(event) => setCfg((current) => ({ ...current, target_col: event.target.value }))} disabled={!cfg.dataset_name}><option value="">— choose target column —</option>{columns.map((column) => <option key={column.col} value={column.col}>{column.col} ({column.semantic_type || column.dtype})</option>)}</select><p style={{ color: "var(--text-tertiary)", fontSize: 11, marginTop: 5 }}>Columns are read from the selected dataset—no manual typing required.</p></div>
-        <div className="field"><label className="label">Task type</label><select className="input select" value={cfg.task} onChange={(event) => setCfg((current) => ({ ...current, task: event.target.value }))}>{TASKS.map((task) => <option key={task.value} value={task.value}>{task.label}</option>)}</select></div>
+        <div className="field">
+          <label className="label">Target column to forecast/predict *</label>
+          <select className="input select" value={cfg.target_col} onChange={(event) => setCfg((current) => ({ ...current, target_col: event.target.value }))} disabled={!cfg.dataset_name}>
+            <option value="">— choose target column —</option>
+            {selectableColumns.map((column) => (
+              <option key={column.col} value={column.col}>{column.col} ({column.semantic_type || column.dtype})</option>
+            ))}
+          </select>
+          <p style={{ color: "var(--text-tertiary)", fontSize: 11, marginTop: 5 }}>
+            {isTimeseries ? "Select the numerical metric you want this model to forecast." : "Columns are read from the selected dataset—no manual typing required."}
+          </p>
+        </div>
+        <div className="field">
+          <label className="label">Task type</label>
+          {isTimeseries ? (
+            <input className="input" value="Time Series (Forecasting)" disabled style={{ cursor: "not-allowed", opacity: 0.9 }} />
+          ) : (
+            <select className="input select" value={cfg.task} onChange={(event) => setCfg((current) => ({ ...current, task: event.target.value }))}>
+              {TASKS.map((task) => <option key={task.value} value={task.value}>{task.label}</option>)}
+            </select>
+          )}
+        </div>
       </div>
     </div>
   );

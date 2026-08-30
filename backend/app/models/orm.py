@@ -134,6 +134,7 @@ class DriftReport(Base):
     detected:    Mapped[bool]     = mapped_column(Boolean, default=False)
     score:       Mapped[float]    = mapped_column(Float, default=0.0)
     retrain:     Mapped[bool]     = mapped_column(Boolean, default=False)
+    retrained:   Mapped[bool]     = mapped_column(Boolean, default=False)
     features:    Mapped[Any]      = mapped_column(JSON, default=list)
     report_key:  Mapped[str | None] = mapped_column(String(512), nullable=True)
     created_at:  Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

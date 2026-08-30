@@ -61,11 +61,13 @@ async def start_training(body: TrainingConfig, db: AsyncSession = Depends(get_db
     model_id = str(uuid.uuid4())
     run_id   = str(uuid.uuid4())
 
+    effective_task = "timeseries" if ds.dtype == "timeseries" or body.task == "timeseries" else body.task
+
     model = Model(
         id         = model_id,
         name       = body.model_name,
         version    = version,
-        task       = ds.dtype if body.task == "automatic" and ds.dtype == "timeseries" else body.task,
+        task       = effective_task,
         status     = "Pending",
         target_col = body.target_col,
         config     = body.model_dump(),
@@ -98,7 +100,7 @@ async def start_training(body: TrainingConfig, db: AsyncSession = Depends(get_db
             storage_key = ds.storage_key,
             fmt         = ds.fmt,
             target_col  = body.target_col,
-            task        = ds.dtype if body.task == "automatic" and ds.dtype == "timeseries" else body.task,
+            task        = effective_task,
             preset      = body.preset,
             time_limit  = body.time_limit,
             config      = body.model_dump(),

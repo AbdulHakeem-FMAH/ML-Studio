@@ -1,0 +1,8 @@
+date,location,temperature_avg_c,temperature_high_c,temperature_low_c,humidity_percent,precipitation_mm,wind_speed_kmh,weather_condition
+2024-08-23,Chennai,28.5,32.1,24.3,72,0.0,12.5,Partly Cloudy
+2024-08-24,Chennai,29.2,33.4,25.1,68,0.0,14.2,Sunny
+2024-08-25,Chennai,27.8,31.9,23.7,75,2.3,11.8,Rainy
+2024-08-26,Chennai,26.4,30.2,22.5,82,8.7,18.5,Rainy
+2024-08-27,Chennai,27.9,31.8,24.1,79,3.2,16.1,Cloudy
+2024-08-28,Chennai,28.6,32.5,25.2,71,0.0,13.4,Partly Cloudy
+2024-08-29,Chennai,29.5,33.7,25.8,65,0.0,15.8,Sunny

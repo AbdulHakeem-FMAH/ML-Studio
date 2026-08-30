@@ -223,14 +223,35 @@ class DriftReportOut(BaseModel):
 
     id: str
     model_id: str
+    model_name: Optional[str] = None
+    model_version: Optional[str] = None
+    ref_dataset_name: Optional[str] = None
+    curr_dataset_name: Optional[str] = None
     dataset_id: Optional[str] = None
     drift_type: str
     detected: bool
     score: float
     retrain: bool
+    retrained: bool = False
     features: List[Any]
     report_key: Optional[str] = None
     created_at: datetime
+
+
+class DriftRetrainRequest(BaseModel):
+    model_id: str
+    dataset_id: Optional[str] = None
+    dataset_name: Optional[str] = None
+    report_id: Optional[str] = None
+
+
+class DriftRetrainResponse(BaseModel):
+    status: str
+    run_id: str
+    model_id: str
+    model_name: str
+    version: str
+    dataset_name: str
 
 
 # ── Forecasting ───────────────────────────────────────────────────────────────
@@ -256,6 +277,8 @@ class ForecastPoint(BaseModel):
 
 class ForecastResponse(BaseModel):
     model_name: str
+    target_col: Optional[str] = None
+    date_col: Optional[str] = None
     history: List[HistPoint]
     forecast: List[ForecastPoint]
 

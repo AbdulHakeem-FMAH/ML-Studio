@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { CircleAlert, FileUp, LoaderCircle, Sparkles, Upload, Zap } from "lucide-react";
+import { Link } from "react-router-dom";
+import { ArrowRight, CircleAlert, FileUp, LoaderCircle, Sparkles, TrendingUp, Upload, Zap } from "lucide-react";
 import { models as modelsApi, predictions } from "../api/client.js";
 
 function ProbBar({ label, prob }) {
@@ -26,7 +27,11 @@ export default function Predictions() {
   const [values, setValues] = useState({}); const [result, setResult] = useState(null); const [batchResult, setBatchResult] = useState(null);
   const [tab, setTab] = useState("single"); const [loading, setLoading] = useState(false); const [error, setError] = useState("");
   const fileRef = useRef(null);
-  useEffect(() => { modelsApi.list().then((models) => setModelList(models.filter((model) => model.status === "Complete"))).catch((err) => setError(err.message)); }, []);
+  useEffect(() => {
+    modelsApi.list()
+      .then((models) => setModelList(models.filter((model) => model.status === "Complete" && model.task !== "timeseries")))
+      .catch((err) => setError(err.message));
+  }, []);
   const selectedModel = modelList.find((model) => model.id === modelId);
   const selectModel = async (id) => {
     setModelId(id); setSchema(null); setValues({}); setResult(null); setBatchResult(null); setError("");
@@ -50,12 +55,25 @@ export default function Predictions() {
   };
   return (
     <div className="page">
-      <div className="page-header"><h1 className="page-title">Predictions</h1><p className="page-sub">Use the exact input schema learned during training—no JSON required.</p></div>
+      <div className="page-header"><h1 className="page-title">Predictions</h1><p className="page-sub">Tabular prediction interface for classification and regression models.</p></div>
       <div className="source-tabs" style={{ marginBottom: 22 }}><button className={`source-tab ${tab === "single" ? "active" : ""}`} onClick={() => setTab("single")}><Zap size={13} /> Single prediction</button><button className={`source-tab ${tab === "batch" ? "active" : ""}`} onClick={() => setTab("batch")}><FileUp size={13} /> Batch CSV</button></div>
       <section className="card">
-        <div className="field" style={{ maxWidth: 620, marginBottom: 22 }}><label className="label">Trained model</label><select className="input select" value={modelId} onChange={(event) => selectModel(event.target.value)}><option value="">— choose a complete model —</option>{modelList.map((model) => <option key={model.id} value={model.id}>{model.name} v{model.version} · {model.task}</option>)}</select></div>
+        <div className="field" style={{ maxWidth: 620, marginBottom: 22 }}>
+          <label className="label">Trained tabular model</label>
+          <select className="input select" value={modelId} onChange={(event) => selectModel(event.target.value)}>
+            <option value="">— choose a tabular model —</option>
+            {modelList.map((model) => <option key={model.id} value={model.id}>{model.name} v{model.version} · {model.task}</option>)}
+          </select>
+        </div>
         {loading && !schema && <div style={{ color: "var(--text-secondary)", fontSize: 13, display: "flex", gap: 8, alignItems: "center" }}><LoaderCircle size={16} className="spin" /> Loading model input schema…</div>}
-        {schema?.task === "timeseries" ? <div style={{ padding: 16, borderRadius: "var(--r-md)", background: "var(--info-dim)", color: "var(--text-secondary)", fontSize: 13 }}>This is a time-series model. Use the Forecasting page to run horizon-based predictions.</div> : tab === "single" && schema && <>
+        {schema?.task === "timeseries" ? (
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: 16, borderRadius: "var(--r-md)", background: "var(--info-dim)", color: "var(--text-secondary)", fontSize: 13 }}>
+            <span>This is a time-series model. Time-series models generate multi-step forecasts rather than single-row tabular predictions.</span>
+            <Link to={`/forecasting?model=${selectedModel?.name || ""}`} className="btn btn-primary btn-sm">
+              <TrendingUp size={13} /> Go to Forecasting <ArrowRight size={13} />
+            </Link>
+          </div>
+        ) : tab === "single" && schema && <>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 18 }}><Sparkles size={16} color="var(--accent)" /><div><strong style={{ fontSize: 14 }}>Model input form</strong><p style={{ fontSize: 12, color: "var(--text-secondary)" }}>{schema.features.length} expected feature{schema.features.length === 1 ? "" : "s"} · types and categories derived from the training data</p></div></div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16 }}>{schema.features.map((feature) => <FeatureInput key={feature.name} feature={feature} value={values[feature.name]} onChange={(value) => updateValue(feature.name, value)} />)}</div>
           <button className="btn btn-primary" style={{ marginTop: 24 }} onClick={handleSingle} disabled={loading}>{loading ? <><LoaderCircle size={14} className="spin" /> Predicting</> : <><Zap size={14} /> Run prediction</>}</button>
